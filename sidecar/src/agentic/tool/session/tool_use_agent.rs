@@ -1526,7 +1526,7 @@ You accomplish a given task iteratively, breaking it down into clear steps and w
                     return;
                 }
                 if message.is_human_message() {
-                    message.set_cache_point();
+                    message.set_cache_point(true);
                     cache_points_set = cache_points_set + 1;
                 }
             });

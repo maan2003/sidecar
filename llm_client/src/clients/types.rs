@@ -617,8 +617,8 @@ impl LLMClientMessage {
         self.function_return.as_ref()
     }
 
-    pub fn set_cache_point(&mut self) {
-        self.cache_point = true;
+    pub fn set_cache_point(&mut self, value: bool) {
+        self.cache_point = value;
     }
 
     pub fn cache_point(mut self) -> Self {

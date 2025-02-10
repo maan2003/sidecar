@@ -17,7 +17,7 @@ const TRUNCATED_MESSAGE: &str =
     You should retry this tool with line numbers of what you are looking for.</NOTE>";
 
 fn maybe_truncate(s: &str) -> String {
-    let max_lines = 200; // arbitrary limit to mimic Python code’s truncation
+    let max_lines = 10000; // arbitrary limit to mimic Python code’s truncation
     let lines: Vec<&str> = s.lines().collect();
     if lines.len() > max_lines {
         let mut truncated = lines[..max_lines].join("\n");
@@ -38,19 +38,20 @@ impl AnthropicCodeEditor {
         params: CodeEditorParameters,
     ) -> Result<ActionObservation, AnthropicEditorError> {
         let path = PathBuf::from(&params.path);
-        if let Some(observation) = self.validate_path(&params.command, &path) {
+        let path = path.strip_prefix("/repo").unwrap_or(&path);
+        if let Some(observation) = self.validate_path(&params.command, path) {
             return Ok(observation);
         }
 
         match params.command {
-            EditorCommand::View => self.view(&path, params.view_range).await,
+            EditorCommand::View => self.view(path, params.view_range).await,
             EditorCommand::Create => {
                 let file_text = params.file_text.ok_or_else(|| {
                     AnthropicEditorError::InputParametersMissing(
                         "Parameter `file_text` required for `create`.".to_owned(),
                     )
                 })?;
-                self.create(&path, &file_text).await
+                self.create(path, &file_text).await
             }
             EditorCommand::StrReplace => {
                 let old_str = params.old_str.ok_or_else(|| {
@@ -59,7 +60,7 @@ impl AnthropicCodeEditor {
                     )
                 })?;
                 let new_str = params.new_str;
-                self.str_replace(&path, &old_str, new_str.as_deref()).await
+                self.str_replace(path, &old_str, new_str.as_deref()).await
             }
             EditorCommand::Insert => {
                 let insert_line = params.insert_line.ok_or_else(|| {
@@ -72,7 +73,7 @@ impl AnthropicCodeEditor {
                         "Parameter `new_str` required for `insert`".to_owned(),
                     )
                 })?;
-                self.insert(&path, insert_line, &new_str).await
+                self.insert(path, insert_line, &new_str).await
             }
             EditorCommand::UndoEdit => Ok(ActionObservation::errored(
                 "undo_edit not supported, use str_replace instead".to_owned(),
