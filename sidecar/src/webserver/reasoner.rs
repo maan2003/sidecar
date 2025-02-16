@@ -271,7 +271,11 @@ impl RSession {
     }
 
     fn implementer_system() -> LLMClientMessage {
-        LLMClientMessage::system(r#"You are an expert software engineer."#.into()).insert_tools(
+        LLMClientMessage::system(
+            r#"You are an expert software engineer. When editing code, do not add trivial or unnecessary comments—include only comments that add real value."#
+                .into(),
+        )
+        .insert_tools(
             vec![
                 CodeEditorParameters::to_json(),
                 AttemptCompletionClientRequest::to_json(),
