@@ -86,6 +86,11 @@ impl JJ {
         }
     }
 
+    fn run_diff(&self) -> Result<()> {
+        cmd!(self.sh, "jj diff").run()?;
+        Ok(())
+    }
+
     fn cleanup(&self) -> Result<()> {
         env::set_current_dir(&self.original_dir)?;
         self.sh.change_dir(&self.original_dir);
@@ -164,6 +169,8 @@ enum Commands {
     },
     /// Include recent changes from git diff
     IncludeRecentChanges,
+    /// Run 'jj diff' and output the diff to the terminal
+    Diff,
     Help,
 }
 
@@ -195,6 +202,7 @@ fn print_help() {
     println!("  list_knowledge       - List loaded knowledge files");
     println!("  implementer <request> - Send request directly to implementer (bypass architect)");
     println!("  include_recent_changes - Include recent changes from git diff");
+    println!("  diff                 - Run 'jj diff' and output the diff to terminal");
     println!("\nAny other input will be processed as a request to the reasoner.");
     println!("When processing a request, all pending files and loaded knowledge files will be used as context.");
     println!("Tip: Press Ctrl+E to prefix current line with 'implementer ' command.");
@@ -471,6 +479,12 @@ async fn process_input(
                 println!("Recent changes will be included in next request");
             } else {
                 println!("Recent changes will not be included in next request");
+            }
+            Ok(false)
+        }
+        Commands::Diff => {
+            if let Err(e) = jj.run_diff() {
+                eprintln!("Error running diff: {}", e);
             }
             Ok(false)
         }
