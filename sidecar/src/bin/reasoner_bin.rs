@@ -12,6 +12,14 @@ use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::signal;
 use xshell::{cmd, Shell};
 
+// Add CLI arguments for the main binary
+#[derive(clap::Parser, Debug)]
+#[command(name = "reasoner", about = "Agentic Reasoner CLI", version)]
+struct CliArgs {
+    #[arg(long, help = "Revision to pass to 'jj workspace add'.")]
+    revision: Option<String>,
+}
+
 // LLM-related imports
 use llm_client::{
     broker::LLMBroker,
@@ -40,7 +48,7 @@ struct JJ {
 }
 
 impl JJ {
-    fn new() -> Result<Self> {
+    fn new(revision: Option<String>) -> Result<Self> {
         let original_dir = env::current_dir()?;
         let sh = Shell::new()?;
 
@@ -61,7 +69,14 @@ impl JJ {
                 }
             }
         };
-        cmd!(sh, "jj workspace add {agent_path}").run()?;
+
+        // Check if a revision was passed; if so, add the --revision flag
+        if let Some(rev) = revision.as_ref() {
+            cmd!(sh, "jj workspace add {agent_path} --revision {rev}").run()?;
+        } else {
+            cmd!(sh, "jj workspace add {agent_path}").run()?;
+        }
+
         env::set_current_dir(&agent_path)?;
         sh.change_dir(&agent_path);
 
@@ -661,7 +676,9 @@ async fn process_input(
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let jj = JJ::new().expect("Failed to set up agent workspace");
+    // Parse CLI flags for the binary
+    let cli_args = CliArgs::parse();
+    let jj = JJ::new(cli_args.revision).expect("Failed to set up agent workspace");
 
     let language_parsing = Arc::new(TSLanguageParsing::init());
     let llm_broker = Arc::new(LLMBroker::new().await?);
