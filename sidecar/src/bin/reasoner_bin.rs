@@ -191,6 +191,12 @@ enum Commands {
         #[arg(required = true, trailing_var_arg = true, allow_hyphen_values = true)]
         command: Vec<String>,
     },
+    /// Execute a shell command without appending its output to context
+    Exec {
+        /// Shell command to execute (output will not be added to context)
+        #[arg(required = true, trailing_var_arg = true, allow_hyphen_values = true)]
+        command: Vec<String>,
+    },
     /// Restore agent state by running 'jj restore' and clearing exchange history
     Restore,
     Help,
@@ -628,6 +634,17 @@ async fn process_input(
                 output: combined_output,
             });
             println!("Command output added to context");
+            Ok(false)
+        }
+        Commands::Exec { command } => {
+            if command.is_empty() {
+                println!("No command provided.");
+                return Ok(false);
+            }
+            // Use the xshell cmd! macro to build the command.
+            let prog = &command[0];
+            let args = &command[1..];
+            cmd!(jj.sh, "{prog} {args...}").run()?;
             Ok(false)
         }
         Commands::Restore => {
