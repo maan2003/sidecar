@@ -92,6 +92,11 @@ impl JJ {
         Ok(())
     }
 
+    fn describe(&self, message: &str) -> Result<()> {
+        cmd!(self.sh, "jj describe -m {message}").run()?;
+        Ok(())
+    }
+
     fn cleanup(&self) -> Result<()> {
         env::set_current_dir(&self.original_dir)?;
         self.sh.change_dir(&self.original_dir);
@@ -359,6 +364,33 @@ async fn build_human_message(
     })
 }
 
+// Helper function to generate and set commit message
+async fn generate_and_set_commit_message(
+    session: &mut RSession,
+    models_config: &sidecar::webserver::reasoner::LLMClientConfig,
+    llm: &Arc<llm_client::broker::LLMBroker>,
+    jj: &JJ,
+) -> Result<()> {
+    let diff_text = match jj.get_diff()? {
+        Some(diff) => diff,
+        None => {
+            println!("No changes found in git diff.");
+            return Ok(());
+        }
+    };
+    
+    let human_message = HumanMessage {
+        user_request: "Generate commit message".to_string(),
+        context: vec![RContext::RecentChanges { diff: diff_text }],
+    };
+    
+    let commit_msg = session.generate_commit_message(human_message, models_config, &*llm).await?;
+    println!("Generated commit message:\n{}", commit_msg);
+    
+    jj.describe(&commit_msg)?;
+    Ok(())
+}
+
 // Helper function to process commands
 async fn process_input(
     line: &str,
@@ -394,6 +426,8 @@ async fn process_input(
                 .architect_editting(request, models_config, tool_box, llm)
                 .await?;
             jj.record()?;
+            // Generate and set commit message
+            generate_and_set_commit_message(session, models_config, llm, &jj).await?;
             println!("Request processed successfully.");
             return Ok(false);
         }
@@ -510,6 +544,8 @@ async fn process_input(
                 .implementer(request, models_config, llm, true)
                 .await?;
             jj.record()?;
+            // Generate and set commit message
+            generate_and_set_commit_message(session, models_config, llm, &jj).await?;
             println!("Request processed successfully.");
             Ok(false)
         }
@@ -533,28 +569,7 @@ async fn process_input(
             Ok(false)
         }
         Commands::CommitMessage => {
-            let diff_text = match jj.get_diff() {
-                Ok(Some(d)) => d,
-                Ok(None) => {
-                    println!("No changes found in git diff.");
-                    return Ok(false);
-                }
-                Err(e) => {
-                    eprintln!("Error fetching git diff: {}", e);
-                    return Ok(false);
-                }
-            };
-
-            // Create a HumanMessage incorporating the recent changes diff.
-            let human_message = HumanMessage {
-                user_request: "Generate commit message".to_string(),
-                context: vec![RContext::RecentChanges { diff: diff_text }],
-            };
-
-            let commit_msg = session
-                .generate_commit_message(human_message, models_config, &*llm)
-                .await?;
-            println!("Generated commit message:\n{}", commit_msg);
+            generate_and_set_commit_message(session, models_config, llm, &jj).await?;
             Ok(false)
         }
         Commands::RunCommand { command } => {
