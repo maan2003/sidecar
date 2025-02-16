@@ -171,13 +171,8 @@ enum Commands {
     IncludeRecentChanges,
     /// Run 'jj diff' and output the diff to the terminal
     Diff,
-    /// Generate a commit message by summarizing changes from a diff.
-    /// If no diff is provided, the current git diff will be used.
-    CommitMessage {
-        /// Optionally provide the diff text directly.
-        #[arg(required = false)]
-        diff: Option<String>,
-    },
+    /// Generate a commit message by summarizing changes using the current git diff.
+    CommitMessage,
     /// Run a shell command and add its output as context
     RunCommand {
         /// Run a shell command and add its output as context
@@ -230,7 +225,7 @@ fn print_help() {
     println!("  implementer <request> - Send request directly to implementer (bypass architect)");
     println!("  include_recent_changes - Include recent changes from git diff");
     println!("  diff                 - Run 'jj diff' and output the diff to terminal");
-    println!("  commit_message [<diff>] - Generate a commit message from the diff (uses git diff if not provided)");
+    println!("  commit_message             - Generate a commit message using the current git diff");
     println!("  run_command <command> - Run a shell command and add its output as context");
     println!("\nAny other input will be processed as a request to the reasoner.");
     println!("When processing a request, all pending files and loaded knowledge files will be used as context.");
@@ -529,20 +524,16 @@ async fn process_input(
             }
             Ok(false)
         }
-        Commands::CommitMessage { diff } => {
-            let diff_text = if let Some(provided_diff) = diff {
-                provided_diff
-            } else {
-                match jj.get_diff() {
-                    Ok(Some(d)) => d,
-                    Ok(None) => {
-                        println!("No changes found in git diff.");
-                        return Ok(false);
-                    }
-                    Err(e) => {
-                        eprintln!("Error fetching git diff: {}", e);
-                        return Ok(false);
-                    }
+        Commands::CommitMessage => {
+            let diff_text = match jj.get_diff() {
+                Ok(Some(d)) => d,
+                Ok(None) => {
+                    println!("No changes found in git diff.");
+                    return Ok(false);
+                }
+                Err(e) => {
+                    eprintln!("Error fetching git diff: {}", e);
+                    return Ok(false);
                 }
             };
 
