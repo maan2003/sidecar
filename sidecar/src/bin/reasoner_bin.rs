@@ -1,4 +1,4 @@
-use anyhow::{Context as AnyhowContext, Result};
+use anyhow::{bail, Context as AnyhowContext, Result};
 use clap::CommandFactory;
 use clap::{Parser, Subcommand};
 use rand::{thread_rng, Rng};
@@ -416,6 +416,9 @@ async fn process_input(
     let command = match Command::try_parse_from(args) {
         Ok(cmd) => cmd,
         Err(_e) => {
+            if pending_file_paths.is_empty() {
+                bail!("No files in pending context. Please add at least one file using the 'Add' command.");
+            }
             let request = build_human_message(
                 jj,
                 pending_file_paths,
@@ -534,6 +537,9 @@ async fn process_input(
             Ok(false)
         }
         Commands::Implementer { request } => {
+            if pending_file_paths.is_empty() {
+                bail!("No files in pending context. Please add at least one file using the 'Add' command.");
+            }
             let request = build_human_message(
                 jj,
                 pending_file_paths,
