@@ -126,7 +126,12 @@ impl RContext {
                 .unwrap();
             }
             RContext::RecentChanges { diff } => {
-                writeln!(s, "<git_diff>\n{diff}\n</git_diff>", diff = diff.trim()).unwrap();
+                writeln!(
+                    s,
+                    "<recent_changes>\n{diff}\n</recent_changes>",
+                    diff = diff.trim()
+                )
+                .unwrap();
             }
         }
     }
@@ -186,6 +191,7 @@ impl RSession {
 - Context can be a <file path="foo"> with file's entire context.
 - Context can be a <excerpts title="References to `Foo::bar()`"> which contains sections of files that reference of an item.
 - <previous_messages> (if any) contains the previous user messages and assistant response.
+- <recent_changes> (if any) contains recent changes **already applied** to code.
 - <user_request> contains the user's request.
 - Given a request and context, you will generate a step by step plan to accomplish it. Use prior art seen in context where applicable.
 - Your job is to be precise and effective, so avoid extraneous steps even if they offer convenience.

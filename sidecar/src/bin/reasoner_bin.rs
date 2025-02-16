@@ -377,7 +377,6 @@ async fn process_input(
             )
             .await?;
 
-            // Always include history for CLI implementer command
             session
                 .implementer(request, models_config, llm, true)
                 .await?;
