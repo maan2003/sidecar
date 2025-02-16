@@ -1,13 +1,15 @@
 use anyhow::{Context as AnyhowContext, Result};
 use clap::{Parser, Subcommand};
+use rand::{thread_rng, Rng};
 use reedline::{
-    default_emacs_keybindings, ColumnarMenu, DefaultPrompt, DefaultPromptSegment, EditCommand, Emacs, FileBackedHistory,
-    KeyCode, KeyModifiers, MenuBuilder as _, Reedline, ReedlineEvent,
+    default_emacs_keybindings, ColumnarMenu, DefaultPrompt, DefaultPromptSegment, EditCommand,
+    Emacs, FileBackedHistory, KeyCode, KeyModifiers, MenuBuilder as _, Reedline, ReedlineEvent,
 };
+use std::process::Stdio;
 use std::{collections::HashMap, env, fs, path::PathBuf, sync::Arc};
+use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::signal;
 use xshell::{cmd, Shell};
-use rand::{thread_rng, Rng};
 
 // LLM-related imports
 use llm_client::{
@@ -50,9 +52,8 @@ impl JJ {
         let (agent_id, agent_path) = {
             let mut rng = thread_rng();
             loop {
-                let candidate: String = (0..4)
-                    .map(|_| rng.gen_range(b'a'..=b'z') as char)
-                    .collect();
+                let candidate: String =
+                    (0..4).map(|_| rng.gen_range(b'a'..=b'z') as char).collect();
                 let candidate_path = agent_root.join(&candidate);
                 if !candidate_path.exists() {
                     break (candidate, candidate_path);
@@ -296,7 +297,6 @@ async fn maybe_get_git_diff(jj: &JJ, include_recent_changes: bool) -> Result<Opt
     }
     jj.get_diff()
 }
-
 
 // Helper function to build HumanMessage with context
 async fn build_human_message(
@@ -562,17 +562,76 @@ async fn process_input(
                 println!("No command provided.");
                 return Ok(false);
             }
+            // Build the command with piped stdout and stderr
             let mut cmd = tokio::process::Command::new(&command[0]);
             for arg in command.iter().skip(1) {
                 cmd.arg(arg);
             }
-            // Inherit stderr so that it prints directly to the terminal
-            cmd.stderr(std::process::Stdio::inherit());
-            let output = cmd.output().await?;
-            let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+            cmd.stdout(Stdio::piped());
+            cmd.stderr(Stdio::piped());
+
+            // Spawn the command process
+            let mut child = cmd.spawn()?;
+
+            // Take ownership of stdout and stderr pipes
+            let stdout = child.stdout.take().unwrap();
+            let stderr = child.stderr.take().unwrap();
+
+            let mut stdout_reader = BufReader::new(stdout).lines();
+            let mut stderr_reader = BufReader::new(stderr).lines();
+
+            let mut combined_output = String::new();
+            let mut stdout_done = false;
+            let mut stderr_done = false;
+
+            // Read from both stdout and stderr concurrently
+            while !stdout_done || !stderr_done {
+                tokio::select! {
+                    result = stdout_reader.next_line(), if !stdout_done => {
+                        match result? {
+                            Some(line) => {
+                                println!("{}", line);
+                                combined_output.push_str(&line);
+                                combined_output.push('\n');
+                            },
+                            None => {
+                                stdout_done = true;
+                            }
+                        }
+                    },
+                    result = stderr_reader.next_line(), if !stderr_done => {
+                        match result? {
+                            Some(line) => {
+                                eprintln!("{}", line);
+                                combined_output.push_str(&line);
+                                combined_output.push('\n');
+                            },
+                            None => {
+                                stderr_done = true;
+                            }
+                        }
+                    },
+                }
+            }
+
+            // Wait for the command to finish
+            let status = child.wait().await?;
+            let exit_message = if status.success() {
+                format!("Command exited with status: {}", status)
+            } else {
+                match status.code() {
+                    Some(code) => format!("Command exited with non-zero exit code: {}", code),
+                    None => "Command terminated by signal".to_string(),
+                }
+            };
+            println!("{}", exit_message);
+            combined_output.push_str(&exit_message);
+            combined_output.push('\n');
+
+            // Add the command and its full output (including exit status) to context
             pending_command_contexts.push(RContext::Command {
                 command: command.join(" "),
-                output: stdout,
+                output: combined_output,
             });
             println!("Command output added to context");
             Ok(false)

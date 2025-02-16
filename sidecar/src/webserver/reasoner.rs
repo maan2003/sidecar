@@ -19,16 +19,6 @@ use crate::agentic::tool::code_edit::code_editor::{CodeEditorParameters, EditorC
 use crate::agentic::tool::session::attempt_completion::AttemptCompletionClientRequest;
 use crate::mcts::editor::anthropic_computer::AnthropicCodeEditor;
 
-pub struct Reasoner {
-    toolbox: Arc<ToolBox>,
-}
-
-impl Reasoner {
-    pub fn new(toolbox: Arc<ToolBox>) -> Self {
-        Self { toolbox }
-    }
-}
-
 pub enum Exchange {
     HumanMessage(String),
     Response(String),
@@ -434,14 +424,14 @@ impl RSession {
         let model_props = models_config
             .config_for_llm(LLMType::ClaudeSonnet)
             .with_context(|| "ClaudeSonnet model not configured")?;
-    
+
         // Commit-specific system instruction.
         let system_prompt = "You are a commit message generator. Write a clear, concise, and descriptive commit message in imperative mood summarizing the changes provided in the diff. Avoid verbose language.";
         let system_msg = LLMClientMessage::system(system_prompt.to_string());
-    
+
         // Build user message from the HumanMessage.
         let user_msg = self.build_user_message(&human_msg, false);
-    
+
         // Build a completion request with a low temperature and a modest token limit.
         let request = LLMClientCompletionRequest::new(
             model_props.llm().clone(),
@@ -450,7 +440,7 @@ impl RSession {
             None,
         )
         .set_max_tokens(256);
-    
+
         // Start the LLM stream to get the commit message.
         let (sender, _rx) = tokio::sync::mpsc::unbounded_channel();
         let response = llm
@@ -462,7 +452,7 @@ impl RSession {
                 sender,
             )
             .await?;
-    
+
         // Return the generated commit message (trimmed).
         Ok(response.answer_up_until_now().trim().to_string())
     }
