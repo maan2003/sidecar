@@ -6,6 +6,7 @@ use reedline::{
     default_emacs_keybindings, ColumnarMenu, DefaultPrompt, EditCommand, Emacs, FileBackedHistory,
     KeyCode, KeyModifiers, MenuBuilder as _, Reedline, ReedlineEvent,
 };
+use tokio::signal;
 
 // LLM-related imports
 use llm_client::{
@@ -513,22 +514,33 @@ async fn main() -> anyhow::Result<()> {
                     continue;
                 }
 
-                match process_input(
-                    line,
-                    &mut session,
-                    &models_config,
-                    &tool_box,
-                    &llm_broker,
-                    &mut pending_file_paths,
-                    &knowledge_dir,
-                    &mut loaded_knowledge,
-                    &mut include_recent_changes_flag,
-                )
-                .await
-                {
-                    Ok(true) => break,     // Exit command
-                    Ok(false) => continue, // Continue with next input
-                    Err(e) => eprintln!("Error processing input: {}", e),
+                let process_result = tokio::select! {
+                    res = process_input(
+                        line,
+                        &mut session,
+                        &models_config,
+                        &tool_box,
+                        &llm_broker,
+                        &mut pending_file_paths,
+                        &knowledge_dir,
+                        &mut loaded_knowledge,
+                        &mut include_recent_changes_flag,
+                    ) => Some(res),
+                    _ = signal::ctrl_c() => None,
+                };
+
+                match process_result {
+                    Some(Ok(true)) => break,
+                    Some(Ok(false)) => continue,
+                    Some(Err(e)) => {
+                        eprintln!("Error processing input: {}", e);
+                        continue;
+                    }
+                    // Ctrl+C was pressed while process_input was running
+                    None => {
+                        println!("Operation canceled.");
+                        continue;
+                    }
                 }
             }
             Ok(reedline::Signal::CtrlC | reedline::Signal::CtrlD) => {
