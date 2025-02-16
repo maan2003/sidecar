@@ -1,4 +1,5 @@
 use anyhow::{Context as AnyhowContext, Result};
+use clap::CommandFactory;
 use clap::{Parser, Subcommand};
 use rand::{thread_rng, Rng};
 use reedline::{
@@ -221,35 +222,9 @@ fn print_context(pending_files: &[String]) {
     }
 }
 
-// Helper function to print help
-fn print_help() {
-    println!("\nAvailable commands:");
-    println!("  help                 - Show this help message");
-    println!("  exit                 - Exit the REPL");
-    println!("  context              - Show pending files and loaded knowledge files");
-    println!("  add <file_path>      - Add file to pending files");
-    println!("  remove <index>       - Remove file from pending files by index");
-    println!("  clear_context        - Clear all pending files");
-    println!("  clear                - Clear exchange history");
-    println!("  create_knowledge <title> - Create a new knowledge file using DeepSeekR1 model");
-    println!("  load_knowledge <title> - Load a knowledge file by title (without .md extension)");
-    println!("  unload_knowledge <title> - Unload a knowledge file by title");
-    println!("  list_knowledge       - List loaded knowledge files");
-    println!("  implementer <request> - Send request directly to implementer (bypass architect)");
-    println!("  include_recent_changes - Include recent changes from git diff");
-    println!("  diff                 - Run 'jj diff' and output the diff to terminal");
-    println!("  commit_message             - Generate a commit message using the current git diff");
-    println!("  run_command <command> - Run a shell command and add its output as context");
-    println!("  restore              - Run 'jj restore' and clear agent's exchange history");
-    println!("\nAny other input will be processed as a request to the reasoner.");
-    println!("When processing a request, all pending files and loaded knowledge files will be used as context.");
-    println!("Tip: Press Ctrl+E to prefix current line with 'implementer ' command.");
-}
-
 struct Complete;
 impl reedline::Completer for Complete {
     fn complete(&mut self, line: &str, pos: usize) -> Vec<reedline::Suggestion> {
-        use clap::CommandFactory;
         let mut command = Command::command();
         let start_str = &line[..pos];
         let mut args = shlex::split(start_str).unwrap_or_default();
@@ -378,15 +353,17 @@ async fn generate_and_set_commit_message(
             return Ok(());
         }
     };
-    
+
     let human_message = HumanMessage {
         user_request: "Generate commit message".to_string(),
         context: vec![RContext::RecentChanges { diff: diff_text }],
     };
-    
-    let commit_msg = session.generate_commit_message(human_message, models_config, &*llm).await?;
+
+    let commit_msg = session
+        .generate_commit_message(human_message, models_config, &*llm)
+        .await?;
     println!("Generated commit message:\n{}", commit_msg);
-    
+
     jj.describe(&commit_msg)?;
     Ok(())
 }
@@ -550,7 +527,9 @@ async fn process_input(
             Ok(false)
         }
         Commands::Help => {
-            print_help();
+            let mut cmd = Command::command();
+            cmd.print_long_help().expect("Failed to print help");
+            println!();
             Ok(false)
         }
         Commands::IncludeRecentChanges => {
