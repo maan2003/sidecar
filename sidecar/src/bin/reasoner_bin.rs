@@ -1,12 +1,13 @@
-use std::{collections::HashMap, env, path::PathBuf, sync::Arc};
-
-use anyhow::Context as AnyhowContext;
+use anyhow::{Context as AnyhowContext, Result};
 use clap::{Parser, Subcommand};
 use reedline::{
     default_emacs_keybindings, ColumnarMenu, DefaultPrompt, EditCommand, Emacs, FileBackedHistory,
     KeyCode, KeyModifiers, MenuBuilder as _, Reedline, ReedlineEvent,
 };
+use std::{collections::HashMap, env, fs, path::PathBuf, sync::Arc};
 use tokio::signal;
+use xshell::{cmd, Shell};
+use rand::{thread_rng, Rng};
 
 // LLM-related imports
 use llm_client::{
@@ -26,6 +27,83 @@ use sidecar::{
     inline_completion::symbols_tracker::SymbolTrackerInline,
     webserver::reasoner::{HumanMessage, RContext, RSession},
 };
+
+struct JJ {
+    original_dir: PathBuf,
+    agent_path: PathBuf,
+    agent_id: String,
+    sh: Shell,
+}
+
+impl JJ {
+    fn new() -> Result<Self> {
+        let original_dir = env::current_dir()?;
+        let sh = Shell::new()?;
+
+        let workspace_root_str = cmd!(sh, "jj workspace root").read()?.trim().to_string();
+        let workspace_root = PathBuf::from(workspace_root_str);
+
+        let agent_root = workspace_root.join(".jj").join("agent");
+        fs::create_dir_all(&agent_root)?;
+
+        let (agent_id, agent_path) = {
+            let mut rng = thread_rng();
+            loop {
+                let candidate: String = (0..4)
+                    .map(|_| rng.gen_range(b'a'..=b'z') as char)
+                    .collect();
+                let candidate_path = agent_root.join(&candidate);
+                if !candidate_path.exists() {
+                    break (candidate, candidate_path);
+                }
+            }
+        };
+        cmd!(sh, "jj workspace add {agent_path}").run()?;
+        env::set_current_dir(&agent_path)?;
+        sh.change_dir(&agent_path);
+
+        Ok(JJ {
+            original_dir,
+            agent_path,
+            agent_id,
+            sh,
+        })
+    }
+
+    fn record(&self) -> Result<()> {
+        cmd!(self.sh, "jj st").run()?;
+        Ok(())
+    }
+
+    fn get_diff(&self) -> Result<Option<String>> {
+        let diff_text = cmd!(self.sh, "jj diff --git").read()?;
+        if diff_text.trim().is_empty() {
+            Ok(None)
+        } else {
+            Ok(Some(diff_text))
+        }
+    }
+
+    fn cleanup(&self) -> Result<()> {
+        env::set_current_dir(&self.original_dir)?;
+        self.sh.change_dir(&self.original_dir);
+
+        let agent_id = &self.agent_id;
+        cmd!(self.sh, "jj workspace forget {agent_id}").run()?;
+
+        fs::remove_dir_all(&self.agent_path)?;
+
+        Ok(())
+    }
+}
+
+impl Drop for JJ {
+    fn drop(&mut self) {
+        if let Err(err) = self.cleanup() {
+            eprintln!("Error during JJ cleanup: {}", err);
+        }
+    }
+}
 
 #[derive(Parser, Debug)]
 #[command(name = "", disable_help_subcommand = true, disable_help_flag = true)]
@@ -170,40 +248,23 @@ fn print_loaded_knowledge(loaded_knowledge: &[String]) {
 }
 
 // Helper function to get git diff if needed
-async fn maybe_get_git_diff(include_recent_changes: bool) -> anyhow::Result<Option<String>> {
+async fn maybe_get_git_diff(jj: &JJ, include_recent_changes: bool) -> Result<Option<String>> {
     if !include_recent_changes {
         return Ok(None);
     }
-
-    let output = std::process::Command::new("jj")
-        .arg("diff")
-        .arg("--git")
-        .output()
-        .context("Failed to execute jj diff")?;
-
-    if !output.status.success() {
-        anyhow::bail!(
-            "Git diff failed: {}",
-            String::from_utf8_lossy(&output.stderr)
-        );
-    }
-
-    let diff_text = String::from_utf8(output.stdout)?;
-    if diff_text.is_empty() {
-        Ok(None)
-    } else {
-        Ok(Some(diff_text))
-    }
+    jj.get_diff()
 }
+
 
 // Helper function to build HumanMessage with context
 async fn build_human_message(
+    jj: &JJ,
     pending_file_paths: &[String],
     loaded_knowledge: &[String],
     recent_changes_flag: bool,
     knowledge_dir: &PathBuf,
     request: String,
-) -> anyhow::Result<HumanMessage> {
+) -> Result<HumanMessage> {
     let mut context = vec![];
 
     // Load pending files
@@ -240,7 +301,7 @@ async fn build_human_message(
     }
 
     // Add recent changes if needed
-    if let Some(diff) = maybe_get_git_diff(recent_changes_flag).await? {
+    if let Some(diff) = maybe_get_git_diff(jj, recent_changes_flag).await? {
         context.push(RContext::RecentChanges { diff });
     }
 
@@ -261,7 +322,8 @@ async fn process_input(
     knowledge_dir: &PathBuf,
     loaded_knowledge: &mut Vec<String>,
     recent_changes_flag: &mut bool,
-) -> anyhow::Result<bool> {
+    jj: &JJ,
+) -> Result<bool> {
     // Parse the input line as if it were command line arguments
     let mut args = shlex::split(line).unwrap_or_default();
     args.insert(0, "reson".into());
@@ -269,6 +331,7 @@ async fn process_input(
         Ok(cmd) => cmd,
         Err(_e) => {
             let request = build_human_message(
+                jj,
                 pending_file_paths,
                 &*loaded_knowledge,
                 *recent_changes_flag,
@@ -280,6 +343,7 @@ async fn process_input(
             session
                 .architect_editting(request, models_config, tool_box, llm)
                 .await?;
+            jj.record()?;
             println!("Request processed successfully.");
             return Ok(false);
         }
@@ -325,6 +389,7 @@ async fn process_input(
 
             // Build human message with context
             let human_message = build_human_message(
+                jj,
                 pending_file_paths,
                 &*loaded_knowledge,
                 *recent_changes_flag,
@@ -378,6 +443,7 @@ async fn process_input(
         }
         Commands::Implementer { request } => {
             let request = build_human_message(
+                jj,
                 pending_file_paths,
                 &*loaded_knowledge,
                 *recent_changes_flag,
@@ -389,6 +455,7 @@ async fn process_input(
             session
                 .implementer(request, models_config, llm, true)
                 .await?;
+            jj.record()?;
             println!("Request processed successfully.");
             Ok(false)
         }
@@ -409,7 +476,9 @@ async fn process_input(
 }
 
 #[tokio::main]
-async fn main() -> anyhow::Result<()> {
+async fn main() -> Result<()> {
+    let jj = JJ::new().expect("Failed to set up agent workspace");
+
     let language_parsing = Arc::new(TSLanguageParsing::init());
     let llm_broker = Arc::new(LLMBroker::new().await?);
     let editor_parsing = Arc::new(EditorParsing::default());
@@ -525,6 +594,7 @@ async fn main() -> anyhow::Result<()> {
                         &knowledge_dir,
                         &mut loaded_knowledge,
                         &mut include_recent_changes_flag,
+                        &jj,
                     ) => Some(res),
                     _ = signal::ctrl_c() => None,
                 };
