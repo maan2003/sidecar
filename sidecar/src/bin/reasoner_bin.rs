@@ -1,7 +1,7 @@
 use anyhow::{Context as AnyhowContext, Result};
 use clap::{Parser, Subcommand};
 use reedline::{
-    default_emacs_keybindings, ColumnarMenu, DefaultPrompt, EditCommand, Emacs, FileBackedHistory,
+    default_emacs_keybindings, ColumnarMenu, DefaultPrompt, DefaultPromptSegment, EditCommand, Emacs, FileBackedHistory,
     KeyCode, KeyModifiers, MenuBuilder as _, Reedline, ReedlineEvent,
 };
 use std::{collections::HashMap, env, fs, path::PathBuf, sync::Arc};
@@ -32,6 +32,7 @@ struct JJ {
     original_dir: PathBuf,
     agent_path: PathBuf,
     agent_id: String,
+    workspace_root: String,
     sh: Shell,
 }
 
@@ -41,7 +42,7 @@ impl JJ {
         let sh = Shell::new()?;
 
         let workspace_root_str = cmd!(sh, "jj workspace root").read()?.trim().to_string();
-        let workspace_root = PathBuf::from(workspace_root_str);
+        let workspace_root = PathBuf::from(&workspace_root_str);
 
         let agent_root = workspace_root.join(".jj").join("agent");
         fs::create_dir_all(&agent_root)?;
@@ -66,6 +67,7 @@ impl JJ {
             original_dir,
             agent_path,
             agent_id,
+            workspace_root: workspace_root_str,
             sh,
         })
     }
@@ -564,7 +566,10 @@ async fn main() -> Result<()> {
         ]),
     );
     let edit_mode = Box::new(Emacs::new(keybindings));
-    let prompt = DefaultPrompt::default();
+    let prompt = DefaultPrompt::new(
+        DefaultPromptSegment::Basic(jj.workspace_root.to_owned()),
+        DefaultPromptSegment::Empty,
+    );
 
     let mut line_editor = Reedline::create()
         .with_completer(Box::new(Complete))
