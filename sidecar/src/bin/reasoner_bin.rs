@@ -703,7 +703,21 @@ async fn main() -> Result<()> {
     let editor_parsing = Arc::new(EditorParsing::default());
     let symbol_tracker = Arc::new(SymbolTrackerInline::new(editor_parsing.clone()));
 
-    // Setup LLM configuration
+    let mut providers = vec![
+        LLMProviderAPIKeys::OpenAI(llm_client::provider::OpenAIProvider {
+            api_key: env::var("OPENAI_API_KEY").context("OPENAI_API_KEY not set")?,
+        }),
+        LLMProviderAPIKeys::Anthropic(llm_client::provider::AnthropicAPIKey {
+            api_key: env::var("ANTHROPIC_API_KEY").context("ANTHROPIC_API_KEY not set")?,
+        }),
+    ];
+    
+    if let Some(key) = env::var("FIREWORKS_API_KEY").ok() {
+        providers.push(LLMProviderAPIKeys::FireworksAI(llm_client::provider::FireworksAPIKey {
+            api_key: key,
+        }));
+    }
+    
     let models_config = sidecar::webserver::reasoner::LLMClientConfig {
         models: HashMap::from_iter([
             (LLMType::O3MiniHigh, LLMProvider::OpenAI),
@@ -711,17 +725,7 @@ async fn main() -> Result<()> {
             (LLMType::ClaudeSonnet, LLMProvider::Anthropic),
             (LLMType::DeepSeekR1, LLMProvider::FireworksAI),
         ]),
-        providers: vec![
-            LLMProviderAPIKeys::OpenAI(llm_client::provider::OpenAIProvider {
-                api_key: env::var("OPENAI_API_KEY").context("OPENAI_API_KEY not set")?,
-            }),
-            LLMProviderAPIKeys::Anthropic(llm_client::provider::AnthropicAPIKey {
-                api_key: env::var("ANTHROPIC_API_KEY").context("ANTHROPIC_API_KEY not set")?,
-            }),
-            LLMProviderAPIKeys::FireworksAI(llm_client::provider::FireworksAPIKey {
-                api_key: env::var("FIREWORKS_API_KEY").context("FIREWORKS_API_KEY not set")?,
-            }),
-        ],
+        providers,
     };
 
     let tool_broker = Arc::new(
