@@ -558,17 +558,13 @@ async fn process_input(
             for arg in command.iter().skip(1) {
                 cmd.arg(arg);
             }
+            // Inherit stderr so that it prints directly to the terminal
+            cmd.stderr(std::process::Stdio::inherit());
             let output = cmd.output().await?;
             let stdout = String::from_utf8_lossy(&output.stdout).to_string();
-            let stderr = String::from_utf8_lossy(&output.stderr).to_string();
-            let full_output = if stderr.is_empty() {
-                stdout
-            } else {
-                format!("STDOUT:\n{}\nSTDERR:\n{}", stdout, stderr)
-            };
             pending_command_contexts.push(RContext::Command {
                 command: command.join(" "),
-                output: full_output,
+                output: stdout,
             });
             println!("Command output added to context");
             Ok(false)
