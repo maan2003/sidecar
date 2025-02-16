@@ -1,6 +1,6 @@
 use std::fmt::Write;
 use std::io::{stdout, Write as IoWrite};
-use std::{collections::HashMap, sync::Arc};
+use std::collections::HashMap;
 
 use anyhow::{bail, Context};
 use llm_client::clients::anthropic::AnthropicClient;
@@ -15,7 +15,7 @@ use tokio::sync::mpsc::unbounded_channel;
 use uuid::Uuid;
 
 use crate::agentic::symbol::{identifier::LLMProperties, tool_box::ToolBox};
-use crate::agentic::tool::code_edit::code_editor::{CodeEditorParameters, EditorCommand};
+use crate::agentic::tool::code_edit::code_editor::CodeEditorParameters;
 use crate::agentic::tool::session::attempt_completion::AttemptCompletionClientRequest;
 use crate::mcts::editor::anthropic_computer::AnthropicCodeEditor;
 
@@ -218,7 +218,7 @@ impl RSession {
         &mut self,
         request: HumanMessage,
         models_config: &LLMClientConfig,
-        tool_box: &ToolBox,
+        _tool_box: &ToolBox,
         llm: &LLMBroker,
     ) -> anyhow::Result<()> {
         let model = models_config.config_for_llm(LLMType::O3MiniHigh)?;
@@ -339,8 +339,6 @@ impl RSession {
 
         let mut messages = vec![Self::implementer_system(), user_message];
         let client = AnthropicClient::new();
-        let mut body = String::new();
-        let mut tools = vec![];
         'agent: loop {
             // Add cache point for last message
             messages.last_mut().unwrap().set_cache_point(true);
@@ -357,7 +355,7 @@ impl RSession {
                 }
             }
             let (sender, _rx) = unbounded_channel();
-            (body, tools) = client
+            let (body, tools) = client
                 .stream_completion_with_tool(
                     model.api_key().clone(),
                     LLMClientCompletionRequest::new(
