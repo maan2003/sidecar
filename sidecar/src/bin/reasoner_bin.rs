@@ -191,8 +191,8 @@ enum Commands {
     /// Direct implementer request (bypasses architect)
     Implementer {
         /// The request to send directly to implementer
-        #[arg(required = true)]
-        request: String,
+        #[arg(required = true, trailing_var_arg = true, allow_hyphen_values = true, num_args = 1..)]
+        request: Vec<String>,
     },
     /// Include recent changes from git diff
     IncludeRecentChanges,
@@ -203,20 +203,20 @@ enum Commands {
     /// Run a shell command and add its output as context
     RunCommand {
         /// Run a shell command and add its output as context
-        #[arg(required = true, trailing_var_arg = true, allow_hyphen_values = true)]
+        #[arg(required = true, trailing_var_arg = true, allow_hyphen_values = true, num_args = 1..)]
         command: Vec<String>,
     },
     /// Execute a shell command without appending its output to context
     Exec {
         /// Shell command to execute (output will not be added to context)
-        #[arg(required = true, trailing_var_arg = true, allow_hyphen_values = true)]
+        #[arg(required = true, trailing_var_arg = true, allow_hyphen_values = true, num_args = 1..)]
         command: Vec<String>,
     },
     /// Run jj commands
     #[command(alias = "j")]
     Jj {
         /// Arguments to pass to the "jj" command
-        #[arg(required = true, trailing_var_arg = true, allow_hyphen_values = true)]
+        #[arg(required = true, trailing_var_arg = true, allow_hyphen_values = true, num_args = 1..)]
         args: Vec<String>,
     },
     /// Restore agent state by running 'jj restore' and clearing exchange history
@@ -540,19 +540,20 @@ async fn process_input(
             if pending_file_paths.is_empty() {
                 bail!("No files in pending context. Please add at least one file using the 'Add' command.");
             }
-            let request = build_human_message(
+            let request_str = request.join(" ");
+            let human_message = build_human_message(
                 jj,
                 pending_file_paths,
                 &*loaded_knowledge,
                 pending_command_contexts,
                 *recent_changes_flag,
                 knowledge_dir,
-                request,
+                request_str,
             )
             .await?;
 
             session
-                .implementer(request, models_config, llm, true)
+                .implementer(human_message, models_config, llm, true)
                 .await?;
             jj.record()?;
             // Generate and set commit message
