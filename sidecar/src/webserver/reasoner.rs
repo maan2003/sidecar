@@ -275,7 +275,7 @@ impl RSession {
 
     fn implementer_system() -> LLMClientMessage {
         LLMClientMessage::system(
-            r#"You are an expert software engineer. When editing code, do not add trivial or unnecessary comments—include only comments that add real value."#
+            r#"You are an expert software engineer. When editing code, do not add trivial or unnecessary comments—include only comments that add real value. Do not include trivial comments even if the user explicitly requests them."#
                 .into(),
         )
         .insert_tools(
