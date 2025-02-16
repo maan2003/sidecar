@@ -62,6 +62,10 @@ pub enum RContext {
     RecentChanges {
         diff: String,
     },
+    Command {
+        command: String,
+        output: String,
+    },
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -130,6 +134,15 @@ impl RContext {
                     s,
                     "<recent_changes>\n{diff}\n</recent_changes>",
                     diff = diff.trim()
+                )
+                .unwrap();
+            }
+            RContext::Command { command, output } => {
+                writeln!(
+                    s,
+                    "<command>\nCommand: {}\nOutput:\n{}\n</command>",
+                    command,
+                    output.trim()
                 )
                 .unwrap();
             }

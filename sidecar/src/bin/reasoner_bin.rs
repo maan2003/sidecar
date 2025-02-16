@@ -178,7 +178,27 @@ enum Commands {
         #[arg(required = false)]
         diff: Option<String>,
     },
+    /// Run a shell command and add its output as context
+    RunCommand {
+        /// Run a shell command and add its output as context
+        #[arg(required = true, trailing_var_arg = true, allow_hyphen_values = true)]
+        command: Vec<String>,
+    },
     Help,
+}
+
+// Helper function to print command contexts
+fn print_command_contexts(pending_commands: &[RContext]) {
+    if pending_commands.is_empty() {
+        println!("No command outputs in context.");
+        return;
+    }
+    println!("\nPending command outputs:");
+    for (idx, ctx) in pending_commands.iter().enumerate() {
+        if let RContext::Command { command, .. } = ctx {
+            println!("[{}] Command: {}", idx, command);
+        }
+    }
 }
 
 // Helper function to print current context
@@ -211,6 +231,7 @@ fn print_help() {
     println!("  include_recent_changes - Include recent changes from git diff");
     println!("  diff                 - Run 'jj diff' and output the diff to terminal");
     println!("  commit_message [<diff>] - Generate a commit message from the diff (uses git diff if not provided)");
+    println!("  run_command <command> - Run a shell command and add its output as context");
     println!("\nAny other input will be processed as a request to the reasoner.");
     println!("When processing a request, all pending files and loaded knowledge files will be used as context.");
     println!("Tip: Press Ctrl+E to prefix current line with 'implementer ' command.");
@@ -279,6 +300,7 @@ async fn build_human_message(
     jj: &JJ,
     pending_file_paths: &[String],
     loaded_knowledge: &[String],
+    pending_command_contexts: &[RContext],
     recent_changes_flag: bool,
     knowledge_dir: &PathBuf,
     request: String,
@@ -318,6 +340,11 @@ async fn build_human_message(
         }
     }
 
+    // Add command contexts
+    for cmd_ctx in pending_command_contexts.iter() {
+        context.push(cmd_ctx.clone());
+    }
+
     // Add recent changes if needed
     if let Some(diff) = maybe_get_git_diff(jj, recent_changes_flag).await? {
         context.push(RContext::RecentChanges { diff });
@@ -337,6 +364,7 @@ async fn process_input(
     tool_box: &ToolBox,
     llm: &Arc<llm_client::broker::LLMBroker>,
     pending_file_paths: &mut Vec<String>,
+    pending_command_contexts: &mut Vec<RContext>,
     knowledge_dir: &PathBuf,
     loaded_knowledge: &mut Vec<String>,
     recent_changes_flag: &mut bool,
@@ -352,6 +380,7 @@ async fn process_input(
                 jj,
                 pending_file_paths,
                 &*loaded_knowledge,
+                pending_command_contexts,
                 *recent_changes_flag,
                 knowledge_dir,
                 line.to_string(),
@@ -372,6 +401,7 @@ async fn process_input(
         Commands::Context => {
             print_context(pending_file_paths);
             print_loaded_knowledge(loaded_knowledge);
+            print_command_contexts(pending_command_contexts);
             Ok(false)
         }
         Commands::Add { file_path } => {
@@ -394,7 +424,8 @@ async fn process_input(
         }
         Commands::ClearContext => {
             pending_file_paths.clear();
-            println!("Cleared all pending files");
+            pending_command_contexts.clear();
+            println!("Cleared all pending files and command outputs");
             Ok(false)
         }
         Commands::Clear => {
@@ -410,6 +441,7 @@ async fn process_input(
                 jj,
                 pending_file_paths,
                 &*loaded_knowledge,
+                pending_command_contexts,
                 *recent_changes_flag,
                 knowledge_dir,
                 format!("Generate comprehensive documentation about '{}'", title),
@@ -464,6 +496,7 @@ async fn process_input(
                 jj,
                 pending_file_paths,
                 &*loaded_knowledge,
+                pending_command_contexts,
                 *recent_changes_flag,
                 knowledge_dir,
                 request,
@@ -512,17 +545,41 @@ async fn process_input(
                     }
                 }
             };
-            
+
             // Create a HumanMessage incorporating the recent changes diff.
             let human_message = HumanMessage {
                 user_request: "Generate commit message".to_string(),
                 context: vec![RContext::RecentChanges { diff: diff_text }],
             };
-    
+
             let commit_msg = session
                 .generate_commit_message(human_message, models_config, &*llm)
                 .await?;
             println!("Generated commit message:\n{}", commit_msg);
+            Ok(false)
+        }
+        Commands::RunCommand { command } => {
+            if command.is_empty() {
+                println!("No command provided.");
+                return Ok(false);
+            }
+            let mut cmd = tokio::process::Command::new(&command[0]);
+            for arg in command.iter().skip(1) {
+                cmd.arg(arg);
+            }
+            let output = cmd.output().await?;
+            let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+            let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+            let full_output = if stderr.is_empty() {
+                stdout
+            } else {
+                format!("STDOUT:\n{}\nSTDERR:\n{}", stdout, stderr)
+            };
+            pending_command_contexts.push(RContext::Command {
+                command: command.join(" "),
+                output: full_output,
+            });
+            println!("Command output added to context");
             Ok(false)
         }
     }
@@ -577,6 +634,7 @@ async fn main() -> Result<()> {
 
     // Initialize session, pending files vector and knowledge directory
     let mut pending_file_paths = Vec::new();
+    let mut pending_command_contexts = Vec::new();
     let dirs = directories::ProjectDirs::from("com", "sidecar", "reasoner")
         .expect("Could not determine project directories");
     let knowledge_dir = dirs.data_dir().join("knowledge");
@@ -647,6 +705,7 @@ async fn main() -> Result<()> {
                         &tool_box,
                         &llm_broker,
                         &mut pending_file_paths,
+                        &mut pending_command_contexts,
                         &knowledge_dir,
                         &mut loaded_knowledge,
                         &mut include_recent_changes_flag,
