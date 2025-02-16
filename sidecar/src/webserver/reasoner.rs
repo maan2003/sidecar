@@ -241,6 +241,7 @@ impl RSession {
         let processing_task = tokio::spawn(async move {
             while let Some(token) = rx.recv().await {
                 print!("{}", token.delta().unwrap_or_default());
+                stdout().flush().ok();
             }
         });
 

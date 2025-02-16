@@ -51,7 +51,9 @@ enum Commands {
         #[arg(required = true)]
         index: usize,
     },
-    /// Clear all context
+    /// Clear all pending files
+    ClearContext,
+    /// Clear exchange history
     Clear,
     /// Create a new knowledge file using O3-Mini-High model
     CreateKnowledge {
@@ -101,10 +103,11 @@ fn print_help() {
     println!("\nAvailable commands:");
     println!("  help                 - Show this help message");
     println!("  exit                 - Exit the REPL");
-    println!("  context              - Show pending files");
+    println!("  context              - Show pending files and loaded knowledge files");
     println!("  add <file_path>      - Add file to pending files");
     println!("  remove <index>       - Remove file from pending files by index");
-    println!("  clear                - Clear all pending files");
+    println!("  clear_context        - Clear all pending files");
+    println!("  clear                - Clear exchange history");
     println!("  create_knowledge <title> - Create a new knowledge file using DeepSeekR1 model");
     println!("  load_knowledge <title> - Load a knowledge file by title (without .md extension)");
     println!("  unload_knowledge <title> - Unload a knowledge file by title");
@@ -171,11 +174,11 @@ async fn maybe_get_git_diff(include_recent_changes: bool) -> anyhow::Result<Opti
         return Ok(None);
     }
 
-    let output = std::process::Command::new("git")
+    let output = std::process::Command::new("jj")
         .arg("diff")
-        .arg("--no-ext-diff")
+        .arg("--git")
         .output()
-        .context("Failed to execute git diff")?;
+        .context("Failed to execute jj diff")?;
 
     if !output.status.success() {
         anyhow::bail!(
@@ -306,9 +309,14 @@ async fn process_input(
             }
             Ok(false)
         }
-        Commands::Clear => {
+        Commands::ClearContext => {
             pending_file_paths.clear();
             println!("Cleared all pending files");
+            Ok(false)
+        }
+        Commands::Clear => {
+            session.exchanges.clear();
+            println!("Cleared exchange history.");
             Ok(false)
         }
         Commands::CreateKnowledge { title } => {
