@@ -212,6 +212,13 @@ enum Commands {
         #[arg(required = true, trailing_var_arg = true, allow_hyphen_values = true)]
         command: Vec<String>,
     },
+    /// Run jj commands
+    #[command(alias = "j")]
+    Jj {
+        /// Arguments to pass to the "jj" command
+        #[arg(required = true, trailing_var_arg = true, allow_hyphen_values = true)]
+        args: Vec<String>,
+    },
     /// Restore agent state by running 'jj restore' and clearing exchange history
     Restore,
     Help,
@@ -660,6 +667,15 @@ async fn process_input(
             let prog = &command[0];
             let args = &command[1..];
             cmd!(jj.sh, "{prog} {args...}").run()?;
+            Ok(false)
+        }
+        Commands::Jj { args } => {
+            if args.is_empty() {
+                println!("No jj command provided.");
+                return Ok(false);
+            }
+            // Always run "jj" with the provided arguments
+            cmd!(jj.sh, "jj {args...}").run()?;
             Ok(false)
         }
         Commands::Restore => {
