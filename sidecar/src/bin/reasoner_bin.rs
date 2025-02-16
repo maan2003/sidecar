@@ -171,6 +171,13 @@ enum Commands {
     IncludeRecentChanges,
     /// Run 'jj diff' and output the diff to the terminal
     Diff,
+    /// Generate a commit message by summarizing changes from a diff.
+    /// If no diff is provided, the current git diff will be used.
+    CommitMessage {
+        /// Optionally provide the diff text directly.
+        #[arg(required = false)]
+        diff: Option<String>,
+    },
     Help,
 }
 
@@ -203,6 +210,7 @@ fn print_help() {
     println!("  implementer <request> - Send request directly to implementer (bypass architect)");
     println!("  include_recent_changes - Include recent changes from git diff");
     println!("  diff                 - Run 'jj diff' and output the diff to terminal");
+    println!("  commit_message [<diff>] - Generate a commit message from the diff (uses git diff if not provided)");
     println!("\nAny other input will be processed as a request to the reasoner.");
     println!("When processing a request, all pending files and loaded knowledge files will be used as context.");
     println!("Tip: Press Ctrl+E to prefix current line with 'implementer ' command.");
@@ -486,6 +494,35 @@ async fn process_input(
             if let Err(e) = jj.run_diff() {
                 eprintln!("Error running diff: {}", e);
             }
+            Ok(false)
+        }
+        Commands::CommitMessage { diff } => {
+            let diff_text = if let Some(provided_diff) = diff {
+                provided_diff
+            } else {
+                match jj.get_diff() {
+                    Ok(Some(d)) => d,
+                    Ok(None) => {
+                        println!("No changes found in git diff.");
+                        return Ok(false);
+                    }
+                    Err(e) => {
+                        eprintln!("Error fetching git diff: {}", e);
+                        return Ok(false);
+                    }
+                }
+            };
+            
+            // Create a HumanMessage incorporating the recent changes diff.
+            let human_message = HumanMessage {
+                user_request: "Generate commit message".to_string(),
+                context: vec![RContext::RecentChanges { diff: diff_text }],
+            };
+    
+            let commit_msg = session
+                .generate_commit_message(human_message, models_config, &*llm)
+                .await?;
+            println!("Generated commit message:\n{}", commit_msg);
             Ok(false)
         }
     }

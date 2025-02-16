@@ -408,4 +408,49 @@ impl RSession {
         }
         Ok(())
     }
+
+    /// Generates a commit message automatically by summarizing the provided changes.
+    /// Uses the Sonnet 3.5 model with a low temperature for deterministic output.
+    pub async fn generate_commit_message(
+        &mut self,
+        human_msg: HumanMessage,
+        models_config: &LLMClientConfig,
+        llm: &LLMBroker,
+    ) -> anyhow::Result<String> {
+        // Retrieve model properties for commit message generation using ClaudeSonnet.
+        let model_props = models_config
+            .config_for_llm(LLMType::ClaudeSonnet)
+            .with_context(|| "ClaudeSonnet model not configured")?;
+    
+        // Commit-specific system instruction.
+        let system_prompt = "You are a commit message generator. Write a clear, concise, and descriptive commit message in imperative mood summarizing the changes provided in the diff. Avoid verbose language.";
+        let system_msg = LLMClientMessage::system(system_prompt.to_string());
+    
+        // Build user message from the HumanMessage.
+        let user_msg = self.build_user_message(&human_msg, false);
+    
+        // Build a completion request with a low temperature and a modest token limit.
+        let request = LLMClientCompletionRequest::new(
+            model_props.llm().clone(),
+            vec![system_msg, user_msg],
+            0.3, // low temperature for deterministic output
+            None,
+        )
+        .set_max_tokens(256);
+    
+        // Start the LLM stream to get the commit message.
+        let (sender, _rx) = tokio::sync::mpsc::unbounded_channel();
+        let response = llm
+            .stream_completion(
+                model_props.api_key().clone(),
+                request,
+                model_props.provider().clone(),
+                Default::default(),
+                sender,
+            )
+            .await?;
+    
+        // Return the generated commit message (trimmed).
+        Ok(response.answer_up_until_now().trim().to_string())
+    }
 }
