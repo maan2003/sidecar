@@ -216,7 +216,7 @@ enum Commands {
     #[command(alias = "j")]
     Jj {
         /// Arguments to pass to the "jj" command
-        #[arg(required = true, trailing_var_arg = true, allow_hyphen_values = true, num_args = 1..)]
+        #[arg(trailing_var_arg = true, allow_hyphen_values = true, num_args = 0..)]
         args: Vec<String>,
     },
     /// Restore agent state by running 'jj restore' and clearing exchange history
@@ -677,11 +677,6 @@ async fn process_input(
             Ok(false)
         }
         Commands::Jj { args } => {
-            if args.is_empty() {
-                println!("No jj command provided.");
-                return Ok(false);
-            }
-            // Always run "jj" with the provided arguments
             cmd!(jj.sh, "jj {args...}").run()?;
             Ok(false)
         }
