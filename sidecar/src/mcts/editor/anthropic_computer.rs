@@ -1,5 +1,6 @@
 use std::fmt::Write;
 use std::path::{Path, PathBuf};
+use xshell::Shell;
 
 use crate::{
     agentic::tool::code_edit::code_editor::{CodeEditorParameters, EditorCommand},
@@ -8,8 +9,9 @@ use crate::{
 
 use super::error::AnthropicEditorError;
 
-pub struct AnthropicCodeEditor {
+pub struct AnthropicCodeEditor<'a> {
     tool_thinking: String,
+    shell: &'a Shell,
 }
 
 const TRUNCATED_MESSAGE: &str =
@@ -29,9 +31,12 @@ fn maybe_truncate(s: &str) -> String {
     }
 }
 
-impl AnthropicCodeEditor {
-    pub fn new(tool_thinking: String) -> Self {
-        Self { tool_thinking }
+impl<'a> AnthropicCodeEditor<'a> {
+    pub fn new(tool_thinking: String, shell: &'a Shell) -> Self {
+        Self {
+            tool_thinking,
+            shell,
+        }
     }
     pub async fn run_command(
         &self,
@@ -348,30 +353,23 @@ impl AnthropicCodeEditor {
     }
 
     async fn read_file(&self, path: &Path) -> Result<String, AnthropicEditorError> {
-        match tokio::fs::read_to_string(path).await {
-            Err(e) => Err(AnthropicEditorError::ReadingFileError(format!(
-                "Error reading file {:?}: {:?}",
-                path, e
-            ))),
-            Ok(output) => Ok(output),
-        }
+        self.shell.read_file(path)
+            .map_err(|e| AnthropicEditorError::ReadingFileError(
+                format!("Error reading file {:?}: {}", path, e)
+            ))
     }
 
     async fn write_file(&self, path: &Path, content: &str) -> Result<(), AnthropicEditorError> {
         if let Some(parent) = path.parent() {
-            tokio::fs::create_dir_all(parent).await.map_err(|e| {
-                AnthropicEditorError::InputParametersMissing(format!(
-                    "Error creating directories for {:?}: {}",
-                    parent, e
-                ))
-            })?;
+            self.shell.create_dir_all(parent)
+                .map_err(|e| AnthropicEditorError::InputParametersMissing(
+                    format!("Error creating directories for {:?}: {}", parent, e)
+                ))?;
         }
-        tokio::fs::write(path, content).await.map_err(|e| {
-            AnthropicEditorError::InputParametersMissing(format!(
-                "Error writing file {:?}: {}",
-                path, e
+        self.shell.write_file(path, content)
+            .map_err(|e| AnthropicEditorError::InputParametersMissing(
+                format!("Error writing file {:?}: {}", path, e)
             ))
-        })
     }
 
     fn make_output(&self, file_content: &str, file_descriptor: &str, init_line: i32) -> String {

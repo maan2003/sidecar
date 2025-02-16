@@ -12,6 +12,7 @@ use llm_client::{
 };
 use serde::{Deserialize, Serialize};
 use tokio::sync::mpsc::unbounded_channel;
+use xshell::Shell;
 use uuid::Uuid;
 
 use crate::agentic::symbol::{identifier::LLMProperties, tool_box::ToolBox};
@@ -220,6 +221,7 @@ impl RSession {
         models_config: &LLMClientConfig,
         _tool_box: &ToolBox,
         llm: &LLMBroker,
+        shell: &Shell,
     ) -> anyhow::Result<()> {
         let model = models_config.config_for_llm(LLMType::O3MiniHigh)?;
         let user_message = self.build_user_message(&request, true);
@@ -332,6 +334,7 @@ impl RSession {
         models_config: &LLMClientConfig,
         _llm: &LLMBroker,
         include_previous_exchanges: bool,
+        shell: &Shell,
     ) -> anyhow::Result<()> {
         let model = models_config.config_for_llm(LLMType::ClaudeSonnet)?;
         // Construct user message with context and request
@@ -377,7 +380,7 @@ impl RSession {
             for (tool, (id, input)) in &tools {
                 match &**tool {
                     "str_replace_editor" => {
-                        let observation = AnthropicCodeEditor::new(body.clone())
+                        let observation = AnthropicCodeEditor::new(body.clone(), shell)
                             .run_command(serde_json::from_str(input)?)
                             .await?;
                         tool_responses.push(LLMClientToolReturn::new(
