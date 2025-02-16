@@ -102,6 +102,11 @@ impl JJ {
 
         Ok(())
     }
+
+    fn restore(&self) -> Result<()> {
+        cmd!(self.sh, "jj restore").run()?;
+        Ok(())
+    }
 }
 
 impl Drop for JJ {
@@ -179,6 +184,8 @@ enum Commands {
         #[arg(required = true, trailing_var_arg = true, allow_hyphen_values = true)]
         command: Vec<String>,
     },
+    /// Restore agent state by running 'jj restore' and clearing exchange history
+    Restore,
     Help,
 }
 
@@ -227,6 +234,7 @@ fn print_help() {
     println!("  diff                 - Run 'jj diff' and output the diff to terminal");
     println!("  commit_message             - Generate a commit message using the current git diff");
     println!("  run_command <command> - Run a shell command and add its output as context");
+    println!("  restore              - Run 'jj restore' and clear agent's exchange history");
     println!("\nAny other input will be processed as a request to the reasoner.");
     println!("When processing a request, all pending files and loaded knowledge files will be used as context.");
     println!("Tip: Press Ctrl+E to prefix current line with 'implementer ' command.");
@@ -567,6 +575,15 @@ async fn process_input(
                 output: stdout,
             });
             println!("Command output added to context");
+            Ok(false)
+        }
+        Commands::Restore => {
+            if let Err(e) = jj.restore() {
+                eprintln!("Error running restore: {}", e);
+            } else {
+                session.exchanges.clear();
+                println!("Agent restored and exchange history cleared.");
+            }
             Ok(false)
         }
     }
