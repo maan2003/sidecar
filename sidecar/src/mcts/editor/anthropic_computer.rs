@@ -38,6 +38,17 @@ impl<'a> AnthropicCodeEditor<'a> {
             shell,
         }
     }
+
+    pub fn new_default(tool_thinking: String) -> Self {
+        // Create a new shell instance (panic if creation fails)
+        let sh = Shell::new().expect("failed to create shell");
+        // Leak the shell so that we can get a &'static Shell reference.
+        let shell_ref: &'static Shell = Box::leak(Box::new(sh));
+        Self {
+            tool_thinking,
+            shell: shell_ref,
+        }
+    }
     pub async fn run_command(
         &self,
         params: CodeEditorParameters,
@@ -361,9 +372,9 @@ impl<'a> AnthropicCodeEditor<'a> {
 
     async fn write_file(&self, path: &Path, content: &str) -> Result<(), AnthropicEditorError> {
         if let Some(parent) = path.parent() {
-            self.shell.create_dir_all(parent)
+            self.shell.create_dir(parent)
                 .map_err(|e| AnthropicEditorError::InputParametersMissing(
-                    format!("Error creating directories for {:?}: {}", parent, e)
+                    format!("Error creating directory {:?}: {}", parent, e)
                 ))?;
         }
         self.shell.write_file(path, content)

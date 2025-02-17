@@ -270,6 +270,7 @@ impl RSession {
             models_config,
             llm,
             false,
+            shell
         )
         .await?;
         Ok(())

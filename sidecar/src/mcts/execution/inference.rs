@@ -775,7 +775,7 @@ Output:
                 ))
             }
             ToolInputPartial::CodeEditorParameters(code_editor_parameters) => {
-                let editor = AnthropicCodeEditor::new(tool_thinking.to_owned());
+                let editor = AnthropicCodeEditor::new_default(tool_thinking.to_owned());
                 let observation = editor.run_command(code_editor_parameters).await;
                 match observation {
                     Ok(observation_ok) => Ok(observation_ok),
