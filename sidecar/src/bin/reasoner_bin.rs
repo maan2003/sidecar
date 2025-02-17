@@ -201,7 +201,7 @@ enum Commands {
     /// Generate a commit message by summarizing changes using the current git diff.
     CommitMessage,
     /// Run a shell command and add its output as context
-    RunCommand {
+    Run {
         /// Run a shell command and add its output as context
         #[arg(required = true, trailing_var_arg = true, allow_hyphen_values = true, num_args = 1..)]
         command: Vec<String>,
@@ -588,7 +588,7 @@ async fn process_input(
             generate_and_set_commit_message(session, models_config, llm, &jj).await?;
             Ok(false)
         }
-        Commands::RunCommand { command } => {
+        Commands::Run { command } => {
             if command.is_empty() {
                 println!("No command provided.");
                 return Ok(false);
