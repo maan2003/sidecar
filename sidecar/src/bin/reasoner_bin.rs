@@ -843,7 +843,11 @@ async fn main() -> Result<()> {
                     }
                 }
             }
-            Ok(reedline::Signal::CtrlC | reedline::Signal::CtrlD) => {
+            Ok(reedline::Signal::CtrlC) => {
+                // Ignore Ctrl+C - do nothing, just continue with the next prompt
+                continue;
+            }
+            Ok(reedline::Signal::CtrlD) => {
                 break;
             }
             Err(e) => {
