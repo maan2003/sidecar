@@ -419,6 +419,7 @@ async fn process_input(
             if pending_file_paths.is_empty() {
                 bail!("No files in pending context. Please add at least one file using the 'Add' command.");
             }
+            jj.describe(line)?;
             let request = build_human_message(
                 jj,
                 pending_file_paths,
@@ -541,6 +542,7 @@ async fn process_input(
                 bail!("No files in pending context. Please add at least one file using the 'Add' command.");
             }
             let request_str = request.join(" ");
+            jj.describe(&request_str)?;
             let human_message = build_human_message(
                 jj,
                 pending_file_paths,
@@ -711,13 +713,13 @@ async fn main() -> Result<()> {
             api_key: env::var("ANTHROPIC_API_KEY").context("ANTHROPIC_API_KEY not set")?,
         }),
     ];
-    
+
     if let Some(key) = env::var("FIREWORKS_API_KEY").ok() {
         providers.push(LLMProviderAPIKeys::FireworksAI(llm_client::provider::FireworksAPIKey {
             api_key: key,
         }));
     }
-    
+
     let models_config = sidecar::webserver::reasoner::LLMClientConfig {
         models: HashMap::from_iter([
             (LLMType::O3MiniHigh, LLMProvider::OpenAI),
