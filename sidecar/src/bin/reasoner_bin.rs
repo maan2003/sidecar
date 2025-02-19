@@ -173,6 +173,9 @@ enum Commands {
         /// Title of the knowledge file to create (without .md extension)
         #[arg(required = true)]
         title: String,
+        /// Request text to send to the LLM (do not include the title)
+        #[arg(required = true, trailing_var_arg = true, allow_hyphen_values = true, num_args = 1..)]
+        request: Vec<String>,
     },
     /// Load a knowledge file by title (without .md extension)
     LoadKnowledge {
@@ -479,10 +482,13 @@ async fn process_input(
             println!("Cleared exchange history.");
             Ok(false)
         }
-        Commands::CreateKnowledge { title } => {
+        Commands::CreateKnowledge { title, request } => {
             let file_path = knowledge_dir.join(format!("{}.md", title));
 
-            // Build human message with context
+            // Join the provided request arguments into a single string.
+            let request_str = request.join(" ");
+
+            // Build human message with context using the provided request.
             let human_message = build_human_message(
                 jj,
                 pending_file_paths,
@@ -490,7 +496,7 @@ async fn process_input(
                 pending_command_contexts,
                 *recent_changes_flag,
                 knowledge_dir,
-                format!("Generate comprehensive documentation about '{}'", title),
+                request_str,
             )
             .await?;
 
