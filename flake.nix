@@ -29,12 +29,16 @@
       });
       packages = forAllSystems ({ system, pkgs, ... }: {
         default = pkgs.rustPlatform.buildRustPackage {
-            pname = "reasoner";
+            pname = "robomanmeet";
             version = "0.1.0";
             src = ./.;
+            cargoBuildFlags = [ "--bin=reasoner_bin" ];
             cargoLock = {
                 lockFile = ./Cargo.lock;
             };
+            buildInputs = [ pkgs.openssl ];
+            nativeBuildInputs = [ pkgs.pkg-config ];
+            doCheck = false;
         };
       });
       # Compatibility with older Nix installations that don't check for `devShells.<arch>.default` first.
