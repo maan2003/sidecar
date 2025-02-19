@@ -192,8 +192,9 @@ enum Commands {
     /// List loaded knowledge files
     ListKnowledge,
     /// Direct implementer request (bypasses architect)
-    Implementer {
-        /// The request to send directly to implementer
+    #[command(name = "impl")]
+    Impl {
+        /// The request to send directly to impl
         #[arg(required = true, trailing_var_arg = true, allow_hyphen_values = true, num_args = 1..)]
         request: Vec<String>,
     },
@@ -543,7 +544,7 @@ async fn process_input(
             print_loaded_knowledge(loaded_knowledge);
             Ok(false)
         }
-        Commands::Implementer { request } => {
+        Commands::Impl { request } => {
             if pending_file_paths.is_empty() {
                 bail!("No files in pending context. Please add at least one file using the 'Add' command.");
             }
@@ -792,7 +793,7 @@ async fn main() -> Result<()> {
         KeyCode::Char('e'),
         ReedlineEvent::Multiple(vec![
             ReedlineEvent::ClearScreen,
-            ReedlineEvent::Edit(vec![EditCommand::InsertString("implementor ".to_string())]),
+            ReedlineEvent::Edit(vec![EditCommand::InsertString("impl ".to_string())]),
         ]),
     );
     let edit_mode = Box::new(Emacs::new(keybindings));
