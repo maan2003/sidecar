@@ -191,17 +191,18 @@ impl RSession {
 
     fn developer_message() -> LLMClientMessage {
         let text =
-        r#"You are a senior software engineer, expert planner and system architect working alongside a software engineer.
-- <context> contains the context for the request.
-- Context can be a <file path="foo"> with file's entire context.
-- Context can be a <excerpts title="References to `Foo::bar()`"> which contains sections of files that reference of an item.
-- <previous_messages> (if any) contains the previous user messages and assistant response.
-- <recent_changes> (if any) contains recent changes **already applied** to code.
-- <user_request> contains the user's request.
-- Given a request and context, you will generate a step by step plan to accomplish it. Use prior art seen in context where applicable.
-- Your job is to be precise and effective, so avoid extraneous steps even if they offer convenience.
-- Use existing patterns in the code unless explicitly requested otherwise.
-- Feel free to refactor existing code."#.to_string();
+        r#"You are an expert software architect. Your role is to analyze technical requirements and produce clear, actionable implementation plans.
+These plans will then be carried out by a junior software engineer so you need to be specific and detailed. However do not actually write the code, just explain the plan.
+
+Follow these steps for the request:
+1. Carefully analyze requirements to identify core functionality and constraints
+2. Define clear technical approach with specific technologies and patterns
+3. Break down implementation into concrete, actionable steps at the appropriate level of abstraction
+
+Keep responses focused, specific and actionable.
+
+IMPORTANT: Do not ask the user if you should implement the changes at the end. Just provide the plan as described above.
+IMPORTANT: Do not attempt to write the code or use any string modification tools. Just provide the plan."#.to_string();
         LLMClientMessage::system(text)
     }
 
@@ -237,8 +238,8 @@ impl RSession {
                 0.6, // ignored by o1
                 None,
             )
-            .set_max_tokens(20480)
-            .set_thinking_budget(4096),
+            .set_max_tokens(40480)
+            .set_thinking_budget(20480),
             model.provider().clone(),
             Default::default(),
             sender,
@@ -248,6 +249,7 @@ impl RSession {
         let processing_task = tokio::spawn(async move {
             while let Some(token) = rx.recv().await {
                 print!("{}", token.delta().unwrap_or_default());
+                print!("{}", token.thinking_delta().unwrap_or_default());
                 stdout().flush().ok();
             }
         });
@@ -304,10 +306,10 @@ impl RSession {
             for exchange in &self.exchanges {
                 match exchange {
                     Exchange::HumanMessage(msg) => {
-                        writeln!(user_message, "<user>{}</user>", msg).unwrap();
+                        writeln!(user_message, "<user>{msg}</user>").unwrap()
                     }
                     Exchange::Response(msg) => {
-                        writeln!(user_message, "<assistant>{}</assistant>", msg).unwrap();
+                        writeln!(user_message, "<assistant>{msg}</assistant>").unwrap()
                     }
                 }
             }
@@ -315,7 +317,8 @@ impl RSession {
         }
 
         // Add context information from files, knowledge files, git diff, etc.
-        user_message += "<context>\n";
+        user_message +=
+            "As you answer the user's questions, you can use the following context:\n<context>\n";
         for c in &request.context {
             c.to_message(&mut user_message);
             user_message.push('\n');

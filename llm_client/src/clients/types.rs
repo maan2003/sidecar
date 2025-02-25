@@ -949,6 +949,8 @@ impl LLMClientUsageStatistics {
 pub struct LLMClientCompletionResponse {
     answer_up_until_now: String,
     delta: Option<String>,
+    thinking_up_until_now: String,
+    thinking_delta: Option<String>,
     model: String,
     usage_statistics: LLMClientUsageStatistics,
 }
@@ -959,12 +961,24 @@ impl LLMClientCompletionResponse {
             answer_up_until_now,
             delta,
             model,
+            thinking_up_until_now: String::new(),
+            thinking_delta: None,
             usage_statistics: LLMClientUsageStatistics::new(),
         }
     }
 
     pub fn set_usage_statistics(mut self, usage_statistics: LLMClientUsageStatistics) -> Self {
         self.usage_statistics = usage_statistics;
+        self
+    }
+
+    pub fn set_thinking_delta(
+        mut self,
+        thinking_up_until_now: String,
+        thinking_delta: Option<String>,
+    ) -> Self {
+        self.thinking_up_until_now = thinking_up_until_now;
+        self.thinking_delta = thinking_delta;
         self
     }
 
@@ -978,6 +992,10 @@ impl LLMClientCompletionResponse {
 
     pub fn delta(&self) -> Option<&str> {
         self.delta.as_deref()
+    }
+
+    pub fn thinking_delta(&self) -> Option<&str> {
+        self.thinking_delta.as_deref()
     }
 
     pub fn model(&self) -> &str {

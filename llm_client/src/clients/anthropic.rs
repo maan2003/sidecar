@@ -198,6 +198,8 @@ enum ContentBlockStart {
     InputToolUse { name: String, id: String },
     #[serde(rename = "text")]
     TextDelta { text: String },
+    #[serde(rename = "thinking")]
+    ThinkingDelta { thinking: String },
 }
 
 #[derive(Debug, Deserialize)]
@@ -225,6 +227,8 @@ enum ContentBlockDeltaType {
     TextDelta {
         text: String, // Reusing your `ContentBlockDelta.text` concept here
     },
+    #[serde(rename = "thinking_delta")]
+    ThinkingDelta { thinking: String },
 }
 
 #[derive(serde::Serialize, Debug, Clone)]
@@ -357,7 +361,7 @@ impl AnthropicRequest {
         AnthropicRequest {
             system: system_message,
             messages,
-            temperature,
+            temperature: if thinking.is_some() { 1.0 } else { temperature },
             tools,
             stream: true,
             max_tokens,
@@ -385,7 +389,7 @@ impl AnthropicRequest {
         AnthropicRequest {
             system: vec![],
             messages,
-            temperature,
+            temperature: if thinking.is_some() { 1.0 } else { temperature },
             tools: vec![],
             stream: true,
             max_tokens,
@@ -517,6 +521,7 @@ impl AnthropicClient {
         // dbg!(&event_next);
 
         let mut buffered_string = "".to_owned();
+        let mut buffered_thinking = "".to_owned();
         // controls which tool we will be using if any
         let mut tool_use_indication: Vec<(String, (String, String))> = vec![];
 
@@ -552,6 +557,20 @@ impl AnthropicClient {
                                 return Err(LLMClientError::SendError(e));
                             }
                         }
+                        ContentBlockStart::ThinkingDelta { thinking } => {
+                            buffered_thinking = buffered_thinking + &thinking;
+                            if let Err(e) = sender.send(
+                                LLMClientCompletionResponse::new(
+                                    buffered_string.to_owned(),
+                                    None,
+                                    model_str.to_owned(),
+                                )
+                                .set_thinking_delta(buffered_thinking.to_owned(), Some(thinking)),
+                            ) {
+                                error!("Failed to send completion response: {}", e);
+                                return Err(LLMClientError::SendError(e));
+                            }
+                        }
                     }
                 }
                 Ok(AnthropicEvent::ContentBlockDelta { delta, .. }) => match delta {
@@ -580,6 +599,20 @@ impl AnthropicClient {
                     ContentBlockDeltaType::InputJsonDelta { partial_json } => {
                         *running_tool_input_ref = running_tool_input_ref.to_owned() + &partial_json;
                         // println!("input_json_delta::{}", &partial_json);
+                    }
+                    ContentBlockDeltaType::ThinkingDelta { thinking } => {
+                        buffered_thinking = buffered_thinking + &thinking;
+                        if let Err(e) = sender.send(
+                            LLMClientCompletionResponse::new(
+                                buffered_string.to_owned(),
+                                None,
+                                model_str.to_owned(),
+                            )
+                            .set_thinking_delta(buffered_thinking.to_owned(), Some(thinking)),
+                        ) {
+                            error!("Failed to send completion response: {}", e);
+                            return Err(LLMClientError::SendError(e));
+                        }
                     }
                 },
                 Ok(AnthropicEvent::ContentBlockStop { _index }) => {
@@ -797,6 +830,8 @@ impl LLMClient for AnthropicClient {
         let mut input_cached_tokens = 0;
 
         let mut buffered_string = "".to_owned();
+        let mut buffered_thinking = "".to_owned();
+
         while let Some(Ok(event)) = event_source.next().await {
             // TODO: debugging this
             let event = serde_json::from_str::<AnthropicEvent>(&event.data);
@@ -814,6 +849,25 @@ impl LLMClient for AnthropicClient {
                                     Some(text),
                                     model_str.to_owned(),
                                 )
+                                .set_usage_statistics(
+                                    LLMClientUsageStatistics::new()
+                                        .set_input_tokens(input_tokens)
+                                        .set_output_tokens(output_tokens),
+                                ),
+                            ) {
+                                error!("Failed to send completion response: {}", e);
+                                return Err(LLMClientError::SendError(e));
+                            }
+                        }
+                        ContentBlockStart::ThinkingDelta { thinking } => {
+                            buffered_thinking = buffered_thinking + &thinking;
+                            if let Err(e) = sender.send(
+                                LLMClientCompletionResponse::new(
+                                    buffered_string.to_owned(),
+                                    None,
+                                    model_str.to_owned(),
+                                )
+                                .set_thinking_delta(buffered_thinking.to_owned(), Some(thinking))
                                 .set_usage_statistics(
                                     LLMClientUsageStatistics::new()
                                         .set_input_tokens(input_tokens)
@@ -859,6 +913,25 @@ impl LLMClient for AnthropicClient {
                     }
                     ContentBlockDeltaType::InputJsonDelta { partial_json } => {
                         debug!("input_json_delta::{}", &partial_json);
+                    }
+                    ContentBlockDeltaType::ThinkingDelta { thinking } => {
+                        buffered_thinking = buffered_thinking + &thinking;
+                        if let Err(e) = sender.send(
+                            LLMClientCompletionResponse::new(
+                                buffered_string.to_owned(),
+                                None,
+                                model_str.to_owned(),
+                            )
+                            .set_thinking_delta(buffered_thinking.to_owned(), Some(thinking))
+                            .set_usage_statistics(
+                                LLMClientUsageStatistics::new()
+                                    .set_input_tokens(input_tokens)
+                                    .set_output_tokens(output_tokens),
+                            ),
+                        ) {
+                            error!("Failed to send completion response: {}", e);
+                            return Err(LLMClientError::SendError(e));
+                        }
                     }
                 },
                 Ok(AnthropicEvent::MessageStart { message }) => {
@@ -937,6 +1010,8 @@ impl LLMClient for AnthropicClient {
         let mut response_stream = response.bytes_stream().eventsource();
 
         let mut buffered_string = "".to_owned();
+        let mut buffered_thinking = "".to_owned();
+
         while let Some(Ok(event)) = response_stream.next().await {
             let event = serde_json::from_str::<AnthropicEvent>(&event.data);
             match event {
@@ -952,6 +1027,20 @@ impl LLMClient for AnthropicClient {
                                 Some(text),
                                 model_str.to_owned(),
                             )) {
+                                error!("Failed to send completion response: {}", e);
+                                return Err(LLMClientError::SendError(e));
+                            }
+                        }
+                        ContentBlockStart::ThinkingDelta { thinking } => {
+                            buffered_thinking = buffered_thinking + &thinking;
+                            if let Err(e) = sender.send(
+                                LLMClientCompletionResponse::new(
+                                    buffered_string.to_owned(),
+                                    None,
+                                    model_str.to_owned(),
+                                )
+                                .set_thinking_delta(buffered_thinking.to_owned(), Some(thinking)),
+                            ) {
                                 error!("Failed to send completion response: {}", e);
                                 return Err(LLMClientError::SendError(e));
                             }
@@ -976,6 +1065,20 @@ impl LLMClient for AnthropicClient {
                     }
                     ContentBlockDeltaType::InputJsonDelta { partial_json } => {
                         println!("input_json_delta::{}", &partial_json);
+                    }
+                    ContentBlockDeltaType::ThinkingDelta { thinking } => {
+                        buffered_thinking = buffered_thinking + &thinking;
+                        if let Err(e) = sender.send(
+                            LLMClientCompletionResponse::new(
+                                buffered_string.to_owned(),
+                                None,
+                                model_str.to_owned(),
+                            )
+                            .set_thinking_delta(buffered_thinking.to_owned(), Some(thinking)),
+                        ) {
+                            error!("Failed to send completion response: {}", e);
+                            return Err(LLMClientError::SendError(e));
+                        }
                     }
                 },
                 Err(_) => {
