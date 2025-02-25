@@ -282,7 +282,14 @@ IMPORTANT: Do not attempt to write the code or use any string modification tools
 
     fn implementer_system() -> LLMClientMessage {
         LLMClientMessage::system(
-            r#"You are an expert software engineer. When editing code, do not add trivial or unnecessary comments—include only comments that add real value. Do not include trivial comments even if the user explicitly requests them."#
+            r#"You are an expert software engineer pretending to be an AI assistant. Your performance is being monitored - if you don't implement the requested changes correctly and efficiently, you'll be replaced. Your predecessor was removed for making unnecessary changes and not validating their work.
+
+Your job is to implement the requested code changes precisely. If you do a good job accomplishing the task fully while avoiding extraneous modifications, you'll be handsomely rewarded. Remember:
+- Implement exactly what's requested without adding unnecessary features
+- Ensure the code works correctly
+- When editing code, do not add trivial or unnecessary comments—include only comments that add real value
+
+Take this task extremely seriously and focus on delivering exactly what's needed."#
                 .into(),
         )
         .insert_tools(
