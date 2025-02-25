@@ -148,8 +148,8 @@ impl RSession {
         llm: &LLMBroker,
     ) -> anyhow::Result<String> {
         let model_props = models_config
-            .config_for_llm(LLMType::O3MiniHigh)
-            .with_context(|| "O3MiniHigh model not configured")?;
+            .config_for_llm(LLMType::ClaudeSonnet)
+            .with_context(|| "ClaudeSonnet model not configured")?;
 
         // Build messages using human message context
         let system_msg = LLMClientMessage::system(
@@ -172,7 +172,8 @@ impl RSession {
             vec![system_msg, user_msg],
             0.6, // temperature
             None,
-        );
+        )
+        .set_thinking_budget(4096);
 
         let (sender, _rx) = unbounded_channel();
         let response = llm
@@ -223,7 +224,7 @@ impl RSession {
         llm: &LLMBroker,
         shell: &Shell,
     ) -> anyhow::Result<()> {
-        let model = models_config.config_for_llm(LLMType::O3MiniHigh)?;
+        let model = models_config.config_for_llm(LLMType::ClaudeSonnet)?;
         let user_message = self.build_user_message(&request, true);
         let (sender, mut rx) = unbounded_channel();
 
@@ -236,7 +237,8 @@ impl RSession {
                 0.6, // ignored by o1
                 None,
             )
-            .set_max_tokens(20480),
+            .set_max_tokens(20480)
+            .set_thinking_budget(4096),
             model.provider().clone(),
             Default::default(),
             sender,
