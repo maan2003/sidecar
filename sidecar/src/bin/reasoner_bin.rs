@@ -439,8 +439,6 @@ async fn process_input(
                 .architect_editting(request, models_config, tool_box, llm, &jj.sh)
                 .await?;
             jj.record()?;
-            // Generate and set commit message
-            generate_and_set_commit_message(session, models_config, llm, &jj).await?;
             println!("Request processed successfully.");
             return Ok(false);
         }
@@ -565,8 +563,6 @@ async fn process_input(
                 .implementer(human_message, models_config, llm, true, &jj.sh)
                 .await?;
             jj.record()?;
-            // Generate and set commit message
-            generate_and_set_commit_message(session, models_config, llm, &jj).await?;
             println!("Request processed successfully.");
             Ok(false)
         }
