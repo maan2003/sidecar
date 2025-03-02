@@ -228,6 +228,13 @@ enum ContentBlockDeltaType {
 }
 
 #[derive(serde::Serialize, Debug, Clone)]
+struct AnthropicThinking {
+    #[serde(rename = "type")]
+    thinking_type: String,
+    budget_tokens: usize,
+}
+
+#[derive(serde::Serialize, Debug, Clone)]
 struct AnthropicRequest {
     system: Vec<AnthropicMessageContent>,
     messages: Vec<AnthropicMessage>,
@@ -238,6 +245,8 @@ struct AnthropicRequest {
     stream: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     max_tokens: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    thinking: Option<AnthropicThinking>,
     model: String,
 }
 
@@ -262,6 +271,12 @@ impl AnthropicRequest {
                 }
             }
         };
+        let thinking = completion_request
+            .thinking_budget()
+            .map(|budget| AnthropicThinking {
+                thinking_type: "enabled".to_owned(),
+                budget_tokens: budget,
+            });
         let messages = completion_request.messages();
         // grab the tools over here ONLY from the system message
         let tools = messages
@@ -346,6 +361,7 @@ impl AnthropicRequest {
             tools,
             stream: true,
             max_tokens,
+            thinking,
             model: model_str,
         }
     }
@@ -356,6 +372,12 @@ impl AnthropicRequest {
     ) -> Self {
         let temperature = completion_request.temperature();
         let max_tokens = completion_request.get_max_tokens();
+        let thinking = completion_request
+            .thinking_budget()
+            .map(|budget| AnthropicThinking {
+                thinking_type: "enabled".to_owned(),
+                budget_tokens: budget,
+            });
         let messages = vec![AnthropicMessage::new(
             "user".to_owned(),
             completion_request.prompt().to_owned(),
@@ -367,6 +389,7 @@ impl AnthropicRequest {
             tools: vec![],
             stream: true,
             max_tokens,
+            thinking,
             model: model_str,
         }
     }
@@ -480,6 +503,12 @@ impl AnthropicClient {
         if response_stream.status() == reqwest::StatusCode::UNAUTHORIZED {
             error!("Unauthorized access to Anthropic API");
             return Err(LLMClientError::UnauthorizedAccess);
+        }
+
+        if let Err(e) = response_stream.error_for_status_ref() {
+            let body = response_stream.text().await?;
+            println!("anthropic::err {body}");
+            return Err(e.into());
         }
 
         let mut event_source = response_stream.bytes_stream().eventsource();
@@ -739,7 +768,7 @@ impl LLMClient for AnthropicClient {
             // enables prompt caching: https://arc.net/l/quote/qtlllqgf
             .header(
                 "anthropic-beta".to_owned(),
-                "prompt-caching-2024-07-31,max-tokens-3-5-sonnet-2024-07-15,computer-use-2024-10-22,output-128k-2025-02-19".to_owned(),
+                "prompt-caching-2024-07-31,max-tokens-3-5-sonnet-2024-07-15,computer-use-2024-10-22,computer-use-2025-01-24,output-128k-2025-02-19".to_owned(),
             )
             .json(&anthropic_request)
             .send()
@@ -753,6 +782,12 @@ impl LLMClient for AnthropicClient {
         if response_stream.status() == reqwest::StatusCode::UNAUTHORIZED {
             error!("Unauthorized access to Anthropic API");
             return Err(LLMClientError::UnauthorizedAccess);
+        }
+
+        if let Err(e) = response_stream.error_for_status_ref() {
+            let body = response_stream.text().await?;
+            println!("anthropic::err {body}");
+            return Err(e.into());
         }
 
         let mut event_source = response_stream.bytes_stream().eventsource();
@@ -891,6 +926,12 @@ impl LLMClient for AnthropicClient {
         if response.status() == reqwest::StatusCode::UNAUTHORIZED {
             error!("Unauthorized access to Anthropic API");
             return Err(LLMClientError::UnauthorizedAccess);
+        }
+
+        if let Err(e) = response.error_for_status_ref() {
+            let body = response.text().await?;
+            println!("anthropic::err {body}");
+            return Err(e.into());
         }
 
         let mut response_stream = response.bytes_stream().eventsource();
