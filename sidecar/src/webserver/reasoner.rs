@@ -225,7 +225,7 @@ IMPORTANT: Do not attempt to write the code or use any string modification tools
         llm: &LLMBroker,
         shell: &Shell,
     ) -> anyhow::Result<()> {
-        let model = models_config.config_for_llm(LLMType::ClaudeSonnet)?;
+        let model = models_config.config_for_llm(LLMType::ClaudeSonnet3_7)?;
         let user_message = self.build_user_message(&request, true);
         let (sender, mut rx) = unbounded_channel();
 
@@ -238,8 +238,8 @@ IMPORTANT: Do not attempt to write the code or use any string modification tools
                 0.6, // ignored by o1
                 None,
             )
-            .set_max_tokens(40480)
-            .set_thinking_budget(20480),
+            .set_max_tokens(22000)
+            .set_thinking_budget(16000),
             model.provider().clone(),
             Default::default(),
             sender,
@@ -355,7 +355,7 @@ Take this task extremely seriously and focus on delivering exactly what's needed
 
         let mut messages = vec![Self::implementer_system(), user_message];
         let client = AnthropicClient::new();
-        'agent: loop {
+        'agent: for iter in 0.. {
             // Add cache point for last message
             messages.last_mut().unwrap().set_cache_point(true);
 
@@ -377,7 +377,14 @@ Take this task extremely seriously and focus on delivering exactly what's needed
                     LLMClientCompletionRequest::new(
                         model.llm().clone(),
                         messages.clone(),
-                        0.0,
+                        // preventing doom looping
+                        if iter < 4 {
+                            0.0
+                        } else if iter < 6 {
+                            0.3
+                        } else {
+                            0.6
+                        },
                         None,
                     ),
                     Default::default(),

@@ -718,9 +718,9 @@ async fn main() -> Result<()> {
     ];
 
     if let Some(key) = env::var("FIREWORKS_API_KEY").ok() {
-        providers.push(LLMProviderAPIKeys::FireworksAI(llm_client::provider::FireworksAPIKey {
-            api_key: key,
-        }));
+        providers.push(LLMProviderAPIKeys::FireworksAI(
+            llm_client::provider::FireworksAPIKey { api_key: key },
+        ));
     }
 
     let models_config = sidecar::webserver::reasoner::LLMClientConfig {
@@ -728,6 +728,7 @@ async fn main() -> Result<()> {
             (LLMType::O3MiniHigh, LLMProvider::OpenAI),
             (LLMType::Gpt4O, LLMProvider::OpenAI),
             (LLMType::ClaudeSonnet, LLMProvider::Anthropic),
+            (LLMType::ClaudeSonnet3_7, LLMProvider::Anthropic),
             (LLMType::DeepSeekR1, LLMProvider::FireworksAI),
         ]),
         providers,
